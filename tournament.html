@@ -115,12 +115,16 @@ tr:hover { background: #f9fafb; }
 .alert-error { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
 .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #34d399; }
 
-#loader { position: fixed; inset: 0; background: rgba(255,255,255,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000; font-weight: 600; font-size: 18px; color: var(--primary); }
+#loader { position: fixed; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; font-weight: 600; font-size: 18px; color: var(--primary); }
+.loader-msg { font-size: 14px; font-weight: 400; color: var(--text-muted); margin-top: 8px; }
 </style>
 </head>
 <body>
 
-<div id="loader">Syncing to Cloud...</div>
+<div id="loader">
+  <div>Syncing to Cloud...</div>
+  <div class="loader-msg" id="loader-msg">Connecting to Supabase Database</div>
+</div>
 
 <!-- NAVIGATION BAR -->
 <nav class="navbar">
@@ -136,6 +140,15 @@ tr:hover { background: #f9fafb; }
 
 <div class="container">
   
+  <!-- ERROR BAR -->
+  <div id="connection-error" class="alert alert-error" style="display: none; margin-bottom: 24px; line-height: 1.6;">
+    ⚠️ <b>Database Connection Error:</b> <span id="error-text">Unknown error</span>.
+    <div id="missing-table-hint" style="display:none; margin-top: 10px; font-size: 13px; font-weight: normal; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 6px;">
+      <b>Quick Fix:</b> It looks like the 'tournaments' table hasn't been created yet. Open your Supabase SQL Editor and run:<br>
+      <code style="display:block; background:#fff; padding: 5px; margin-top:5px; border:1px solid #f87171;">CREATE TABLE tournaments (user_id TEXT PRIMARY KEY, data JSONB NOT NULL);</code>
+    </div>
+  </div>
+
   <!-- SETUP / SETTINGS VIEW -->
   <div id="view-setup" class="view-section active">
     <div style="max-width: 800px; margin: 0 auto;">
@@ -252,11 +265,15 @@ tr:hover { background: #f9fafb; }
 
 <script>
 // --- SUPABASE CONFIGURATION ---
-// IMPORTANT: Paste your Supabase Project URL and Anon Key here
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-// Renamed from 'supabase' to 'supabaseClient' to avoid conflicting with the globally injected 'window.supabase' library from the CDN
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_URL = 'https://pvndtaguitkgilrbreqx.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_zEI8cn6UeX_d3pHoQhV4OQ_dS0a9A1Q';
+
+let supabaseClient = null;
+try {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (e) {
+  console.error("Supabase Init Error", e);
+}
 // ------------------------------
 
 // ── DATA ──
@@ -321,19 +338,47 @@ let state = {
 
 // ── CLOUD STORAGE ENGINE ──
 async function saveState() {
+  if (!supabaseClient) return;
   try {
     const { error } = await supabaseClient.from('tournaments').upsert({ user_id: 'admin', data: state });
     if(error) throw error;
-  } catch(e) { console.error("Cloud save failed", e); }
+  } catch(e) { 
+    console.error("Cloud save failed", e);
+    showError(e.message || "Could not save to Supabase.");
+  }
 }
 
 async function loadState() {
+  if (!supabaseClient) {
+    showError("Supabase client not initialized. Check your URL/Key.");
+    return;
+  }
   try {
     const { data, error } = await supabaseClient.from('tournaments').select('data').eq('user_id', 'admin').single();
+    
+    if (error) {
+      if (error.code === 'PGRST205') {
+        showError("Table 'tournaments' not found in your Supabase database.");
+        document.getElementById('missing-table-hint').style.display = 'block';
+        return;
+      }
+      if (error.code !== 'PGRST116') throw error;
+    }
+
     if (data && data.data && data.data.inited) {
       state = data.data;
     }
-  } catch(e) { console.error("Cloud load failed", e); }
+  } catch(e) { 
+    console.error("Cloud load failed", e);
+    showError(e.message || "Could not connect to Supabase database.");
+  }
+}
+
+function showError(msg) {
+  const errBox = document.getElementById('connection-error');
+  const errText = document.getElementById('error-text');
+  errText.textContent = msg;
+  errBox.style.display = 'block';
 }
 
 // ── UTILS ──
@@ -759,7 +804,10 @@ document.getElementById("btn-confirm-refresh").onclick = async () => {
 };
 
 // ── BOOT ──
-loadState().then(() => initApp());
+loadState().then(() => initApp()).catch(e => {
+  console.error("Boot failure", e);
+  initApp();
+});
 </script>
 </body>
 </html>

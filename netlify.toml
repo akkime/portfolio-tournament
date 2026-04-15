@@ -10,4 +10,3 @@
   from = "/"
   to = "/tournament.html"
   status = 200
-```

@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfolio Tournament 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text-main: #111827;
+  --text-muted: #6b7280;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; font-size: 14px; background: var(--bg); color: var(--text-main); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+/* Navigation */
+.navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; justify-content: space-between; align-items: center; height: 64px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow-sm); }
+.nav-brand { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--text-main); }
+.nav-links { display: flex; gap: 8px; }
+.nav-link { background: transparent; border: none; padding: 8px 16px; border-radius: 6px; color: var(--text-muted); font-weight: 500; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+.nav-link:hover { background: #f3f4f6; color: var(--text-main); }
+.nav-link.active { background: #eff6ff; color: var(--primary); }
+.nav-link:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Main Container */
+.container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+.view-section { display: none; animation: fadeIn 0.3s ease-in-out; }
+.view-section.active { display: block; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Typography & Forms */
+h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
+h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+p.text-muted { color: var(--text-muted); font-size: 14px; margin-bottom: 16px; line-height: 1.5; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; box-shadow: var(--shadow-sm); }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; border-left: 4px solid var(--border); box-shadow: var(--shadow-sm); }
+
+button { font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); padding: 10px 16px; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+button:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: white; border: none; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+.btn-danger { background: var(--danger); color: white; border: none; }
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+input, textarea { font-family: inherit; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: #f9fafb; color: var(--text-main); width: 100%; transition: border-color 0.2s; }
+textarea { resize: vertical; min-height: 80px; }
+input:focus, textarea:focus { outline: none; border-color: var(--primary); background: var(--surface); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+/* Dashboard UI */
+.dashboard-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.leaderboard { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 24px; }
+.lb-card { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); border-left-width: 4px; min-width: 220px; flex-shrink: 0; box-shadow: var(--shadow-md); }
+.lb-card .rank { font-size: 24px; }
+.lb-card .lbl { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.lb-card .val { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.pos { color: var(--success); }
+.neg { color: var(--danger); }
+
+/* Tabs */
+.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; gap: 24px; padding: 0 8px; }
+.tab-btn { padding: 12px 4px; border: none; border-radius: 0; background: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.tab-btn:hover { background: none; color: var(--text-main); border-bottom-color: #d1d5db; }
+.tab-btn.active { border-bottom-color: var(--primary); color: var(--primary); }
+
+/* Tables & Metrics */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { padding: 12px 16px; text-align: right; color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid var(--border); background: #f9fafb; }
+th:first-child, th:nth-child(2) { text-align: left; }
+td { padding: 12px 16px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td:first-child, td:nth-child(2) { text-align: left; }
+tr:last-child td { border-bottom: none; }
+tr:hover { background: #f9fafb; }
+.ticker { font-weight: 600; color: var(--text-main); }
+.sname { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.tag { display: inline-flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.green { color: #065f46; background: #d1fae5; }
+.amber { color: #92400e; background: #fef3c7; }
+.red { color: #b91c1c; background: #fee2e2; }
+.gray { color: #4b5563; background: #f3f4f6; }
+
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 16px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; border-top-width: 4px; box-shadow: var(--shadow-sm); }
+.metric-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.metric-box { background: #f9fafb; border-radius: 8px; padding: 12px; border: 1px solid var(--border); }
+.metric-box .ml { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.metric-box .mv { font-size: 16px; font-weight: 600; }
+
+.bar-row { display: flex; align-items: center; margin: 8px 0; }
+.bar-label { font-size: 12px; color: var(--text-muted); width: 100px; text-align: right; margin-right: 12px; flex-shrink: 0; font-weight: 500; }
+.bar-track { flex: 1; height: 16px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.bar-val { font-size: 12px; width: 60px; text-align: right; flex-shrink: 0; margin-left: 12px; font-weight: 600; }
+
+.stream-header { padding: 20px; margin-bottom: 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; border-left-width: 4px; box-shadow: var(--shadow-sm); }
+.alert { padding: 12px 16px; border-radius: 8px; margin-top: 12px; font-size: 14px; font-weight: 500; }
+.alert-error { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
+.alert-success { background: #d1fae5; color: #065f46; border: 1px solid #34d399; }
+
+#loader { position: fixed; inset: 0; background: rgba(255,255,255,0.8); display: flex; justify-content: center; align-items: center; z-index: 1000; font-weight: 600; font-size: 18px; color: var(--primary); }
+</style>
+</head>
+<body>
+
+<div id="loader">Syncing to Cloud...</div>
+
+<!-- NAVIGATION BAR -->
+<nav class="navbar">
+  <div class="nav-brand">
+    <span>🏆</span> Portfolio Tournament
+  </div>
+  <div class="nav-links">
+    <button id="nav-dashboard" class="nav-link" disabled>Dashboard</button>
+    <button id="nav-update" class="nav-link" disabled>Manual Update</button>
+    <button id="nav-setup" class="nav-link active">Settings</button>
+  </div>
+</nav>
+
+<div class="container">
+  
+  <!-- SETUP / SETTINGS VIEW -->
+  <div id="view-setup" class="view-section active">
+    <div style="max-width: 800px; margin: 0 auto;">
+      <div style="text-align: center; margin-bottom: 40px;">
+        <h1>Tournament Baseline Setup</h1>
+        <p class="text-muted">₹1 Crore invested identically across 4 strategies. Let's see what compounds best.</p>
+      </div>
+
+      <div class="setup-grid">
+        <div class="setup-card" style="border-left-color: #7f77dd;">
+          <b style="font-size: 14px;">A. Your Screener</b>
+          <p class="text-muted" style="margin-top: 4px; margin-bottom: 0;">20 custom picks</p>
+        </div>
+        <div class="setup-card" style="border-left-color: #1d9e75;">
+          <b style="font-size: 14px;">B. Conviction Picks</b>
+          <p class="text-muted" style="margin-top: 4px; margin-bottom: 0;">20 quality compounders</p>
+        </div>
+        <div class="setup-card" style="border-left-color: #378add;">
+          <b style="font-size: 14px;">C. Your Portfolio</b>
+          <p class="text-muted" style="margin-top: 4px; margin-bottom: 0;">20 current holdings</p>
+        </div>
+        <div class="setup-card" style="border-left-color: #ef9f27;">
+          <b style="font-size: 14px;">D. Benchmark</b>
+          <p class="text-muted" style="margin-top: 4px; margin-bottom: 0;">Nifty 50 Index</p>
+        </div>
+      </div>
+
+      <div id="setup-active-warning" class="alert alert-success" style="display: none; margin-bottom: 24px;">
+        ✅ Tournament is active and connected to Supabase Storage. The Netlify background function will automatically update prices daily at 4:30 PM.
+      </div>
+
+      <div class="card" id="setup-config-area">
+        <h2>Stream A: Customize Your Tickers</h2>
+        <p class="text-muted">Enter up to 20 NSE tickers separated by commas. The other 3 streams are pre-configured.</p>
+        <textarea id="setup-tickers" rows="3">TIPSMUSIC, SHILCTECH, SWARAJENG, IRCTC, LTM, LTTS, NATCOPHARM, BLS, HCLTECH, TANLA, CAPLIPOINT, NEWGEN, GULFOILLUB, BANCOINDIA, SHRIPISTON, FIEMIND, SHARDAMOTR, MONARCH, STYLAMIND, PRAJIND</textarea>
+        <div id="setup-count" class="text-muted" style="margin-top: 8px; font-weight: 500;">20/20 tickers</div>
+      </div>
+
+      <div class="card" id="setup-init-area">
+        <h2>Initialize Starting Baseline</h2>
+        <p class="text-muted">Set the initial starting price for the tournament (Day 0). Paste a JSON mapping of your tickers to current prices.</p>
+        <button id="btn-ask-init" class="btn-primary" style="width: 100%; margin-bottom: 20px; padding: 12px;">📋 Copy Price Request Prompt for LLM</button>
+        
+        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Paste JSON Response here:</label>
+        <textarea id="setup-paste" rows="5" placeholder='{"HDFCBANK": 1440.5, "NIFTYBEES": 265.1, ...}'></textarea>
+        <div id="setup-err" style="display: none;"></div>
+        
+        <button id="btn-confirm-init" class="btn-primary" style="width: 100%; margin-top: 16px; padding: 12px; background: var(--success);">🚀 Start Tournament — Lock Base Prices</button>
+      </div>
+
+      <div class="card" id="setup-reset-area" style="display: none; border-color: var(--danger);">
+        <h2 style="color: var(--danger);">Danger Zone</h2>
+        <p class="text-muted">Resetting will permanently delete your starting baseline and all historical snapshots from the cloud.</p>
+        <button id="btn-factory-reset" class="btn-danger">🗑️ Erase Tournament Data & Start Over</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="view-dashboard" class="view-section">
+    <div class="dashboard-header">
+      <div>
+        <h1>Performance Dashboard</h1>
+        <div id="hdr-sub" class="text-muted"></div>
+      </div>
+      <button id="btn-quick-update" class="btn-primary">🔄 Manual Update Override</button>
+    </div>
+
+    <div id="leaderboard" class="leaderboard"></div>
+
+    <div class="card" style="padding: 0;">
+      <div class="tabs" style="margin-bottom: 0; border-bottom: 1px solid var(--border); padding: 0 16px;">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="streamA">Screener</button>
+        <button class="tab-btn" data-tab="streamB">Conviction Picks</button>
+        <button class="tab-btn" data-tab="streamC">Portfolio</button>
+        <button class="tab-btn" data-tab="all">All Stocks</button>
+      </div>
+      
+      <div style="padding: 24px;">
+        <div id="tab-overview"></div>
+        <div id="tab-streamA" style="display: none;"></div>
+        <div id="tab-streamB" style="display: none;"></div>
+        <div id="tab-streamC" style="display: none;"></div>
+        <div id="tab-all" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPDATE PRICES VIEW -->
+  <div id="view-update" class="view-section">
+    <div style="max-width: 600px; margin: 0 auto;">
+      <div style="margin-bottom: 32px;">
+        <h1>Manual Price Override</h1>
+        <p class="text-muted">The background Netlify cron job handles this automatically at 4:30 PM daily. Use this screen only to force a manual snapshot right now.</p>
+      </div>
+
+      <div class="card">
+        <button id="btn-ask-refresh" class="btn-primary" style="width: 100%; margin-bottom: 24px; padding: 12px;">📋 Copy LLM Prompt</button>
+        
+        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Paste LLM JSON Response:</label>
+        <textarea id="refresh-paste" rows="6" placeholder='{"HDFCBANK": 1455.2, "NIFTYBEES": 268.0, ...}'></textarea>
+        <div id="refresh-err" style="display: none;"></div>
+        
+        <div style="display: flex; gap: 12px; margin-top: 16px;">
+          <button id="btn-cancel-refresh" style="flex: 1;">Cancel</button>
+          <button id="btn-confirm-refresh" class="btn-primary" style="flex: 2; background: var(--success);">💾 Force Manual Snapshot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// --- SUPABASE CONFIGURATION ---
+// IMPORTANT: Paste your Supabase Project URL and Anon Key here
+const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+// Renamed from 'supabase' to 'supabaseClient' to avoid conflicting with the globally injected 'window.supabase' library from the CDN
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ------------------------------
+
+// ── DATA ──
+const B = [
+  {t:"HDFCBANK",n:"HDFC Bank"},{t:"ICICIBANK",n:"ICICI Bank"},
+  {t:"BAJAJFINSV",n:"Bajaj Finserv"},{t:"TITAN",n:"Titan"},
+  {t:"INFY",n:"Infosys"},{t:"BHARTIARTL",n:"Bharti Airtel"},
+  {t:"ASIANPAINT",n:"Asian Paints"},{t:"MARUTI",n:"Maruti Suzuki"},
+  {t:"KOTAKBANK",n:"Kotak Bank"},{t:"APOLLOHOSP",n:"Apollo Hospitals"},
+  {t:"LT",n:"L&T"},{t:"PIDILITIND",n:"Pidilite"},
+  {t:"DIVISLAB",n:"Divi's Labs"},{t:"COFORGE",n:"Coforge"},
+  {t:"HDFCLIFE",n:"HDFC Life"},{t:"TRENT",n:"Trent"},
+  {t:"ETERNAL",n:"Eternal"},{t:"ABB",n:"ABB India"},
+  {t:"CHOLAFIN",n:"Cholamandalam"},{t:"NESTLEIND",n:"Nestle India"}
+];
+const C = [
+  {t:"BAJAJ-AUTO",n:"Bajaj Auto"},{t:"HDFCBANK",n:"HDFC Bank"},
+  {t:"ICICIBANK",n:"ICICI Bank"},{t:"MOTHERSON",n:"Motherson"},
+  {t:"TITAN",n:"Titan"},{t:"TATAPOWER",n:"Tata Power"},
+  {t:"NTPC",n:"NTPC"},{t:"POWERGRID",n:"Power Grid"},
+  {t:"TATACONSUM",n:"Tata Consumer"},{t:"ITC",n:"ITC"},
+  {t:"FEDERALBNK",n:"Federal Bank"},{t:"HDFCAMC",n:"HDFC AMC"},
+  {t:"HDFCLIFE",n:"HDFC Life"},{t:"HEROMOTOCO",n:"Hero MotoCorp"},
+  {t:"NESTLEIND",n:"Nestle India"},{t:"COROMANDEL",n:"Coromandel"},
+  {t:"HINDALCO",n:"Hindalco"},{t:"ETERNAL",n:"Eternal"},
+  {t:"TVSMOTOR",n:"TVS Motor"},{t:"INDIGO",n:"IndiGo"}
+];
+const BM = {t:"NIFTYBEES",n:"Nifty 50 ETF"};
+const RATIONALE = {
+  HDFCBANK:"HDFC merger synergies · best-run private bank",
+  ICICIBANK:"Superior ROE · outperforming on NIM",
+  BAJAJFINSV:"Bajaj Finance parent · insurance upside",
+  TITAN:"Jewellery formalisation · Tanishq moat",
+  INFY:"AI deal wins · Cobalt cloud",
+  BHARTIARTL:"ARPU expansion · telecom oligopoly",
+  ASIANPAINT:"80% market share · pricing power",
+  MARUTI:"Car ownership 30/1000 vs global 180/1000",
+  KOTAKBANK:"Conservative credit · digital push",
+  APOLLOHOSP:"Healthcare quality gap · Apollo 24/7",
+  LT:"Capex supercycle · defence + infra",
+  PIDILITIND:"Fevicol monopoly · pricing power",
+  DIVISLAB:"Global API · China+1 beneficiary",
+  COFORGE:"BFS + insurance · Cigniti moat",
+  HDFCLIFE:"3.2% vs 7%+ global penetration",
+  TRENT:"Zudio · fastest growing retail",
+  ETERNAL:"Zomato + Blinkit · quick commerce",
+  ABB:"India electrification + automation",
+  CHOLAFIN:"Best asset quality in NBFC space",
+  NESTLEIND:"Maggi monopoly · distribution moat"
+};
+const COLORS = {A:"#7f77dd",B:"#1d9e75",C:"#378add",D:"#ef9f27"};
+const LABELS = {A:"Your Screener",B:"Conviction Picks",C:"Your Portfolio",D:"Nifty 50"};
+const RANKS = ["🥇","🥈","🥉","4️⃣"];
+
+// ── STATE ──
+let state = {
+  inited: false,
+  startDate: null,
+  sA: [],
+  snaps: []
+};
+
+// ── CLOUD STORAGE ENGINE ──
+async function saveState() {
+  try {
+    const { error } = await supabaseClient.from('tournaments').upsert({ user_id: 'admin', data: state });
+    if(error) throw error;
+  } catch(e) { console.error("Cloud save failed", e); }
+}
+
+async function loadState() {
+  try {
+    const { data, error } = await supabaseClient.from('tournaments').select('data').eq('user_id', 'admin').single();
+    if (data && data.data && data.data.inited) {
+      state = data.data;
+    }
+  } catch(e) { console.error("Cloud load failed", e); }
+}
+
+// ── UTILS ──
+function parseJSON(text) {
+  const m = text.match(/`{3}(?:json)?\s*([\s\S]+?)`{3}/);
+  if (m) return JSON.parse(m[1].trim());
+  const s = text.indexOf("{");
+  const e = text.lastIndexOf("}");
+  if (s === -1 || e === -1 || e <= s) throw new Error("No JSON found. Ensure the response includes valid JSON format.");
+  return JSON.parse(text.slice(s, e + 1));
+}
+
+function parseTickers(raw) {
+  return raw.split(/[,\n]+/).map(t=>t.trim().toUpperCase()).filter(Boolean).slice(0,20).map(t=>({t,n:t}));
+}
+
+function allUniq(sA) {
+  const all = [...B,...C,...sA,BM];
+  const seen = new Set();
+  return all.filter(s=>{ if(seen.has(s.t)) return false; seen.add(s.t); return true; });
+}
+
+window.buildPromptAndCopy = function(stocks, btnId) {
+  const prompt = `Please search the web for current NSE India stock prices. Reply with ONLY a JSON code block, no other text.\n\nTickers: ${stocks.map(s=>s.t).join(", ")}\n\nFormat:\n\`\`\`json\n{"TICKER": price}\n\`\`\``;
+  
+  const textArea = document.createElement("textarea");
+  textArea.value = prompt;
+  textArea.style.top = "0";
+  textArea.style.left = "0";
+  textArea.style.position = "fixed";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  
+  let success = false;
+  try { success = document.execCommand('copy'); } catch (err) {}
+  document.body.removeChild(textArea);
+  
+  const btn = document.getElementById(btnId);
+  const originalText = btn.textContent;
+  
+  if (success) {
+    btn.textContent = "✅ Prompt Copied! Paste into LLM.";
+  } else {
+    btn.textContent = "❌ Copy failed. Please copy manually.";
+  }
+  
+  setTimeout(() => { btn.textContent = originalText; }, 3000);
+}
+
+function calcRet(stocks, sp, cp) {
+  let sum = 0, n = 0;
+  for (const s of stocks) {
+    const a = sp[s.t], b = cp[s.t];
+    if (a && b && a > 0) { sum += (b - a) / a * 100; n++; }
+  }
+  return n > 0 ? sum / n : null;
+}
+
+const INITIAL_INVESTMENT = 10000000;
+const fmtMoney = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format;
+const fmtAxis = v => (v >= 10000000 ? (v/10000000).toFixed(2)+'Cr' : (v >= 100000 ? (v/100000).toFixed(2)+'L' : v));
+
+function pct(v, d=2) {
+  if (v == null) return "—";
+  return (v >= 0 ? "+" : "") + v.toFixed(d) + "%";
+}
+function fmtD(iso) { return new Date(iso).toLocaleDateString("en-IN",{day:"2-digit",month:"short"}); }
+function fmtDF(iso) { return new Date(iso).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}); }
+function daysSince(iso) { return Math.floor((Date.now() - new Date(iso)) / 86400000); }
+
+// ── NAVIGATION CONTROLLER ──
+window.switchView = function(viewId) {
+  document.querySelectorAll('.nav-link').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById(viewId === 'view-setup' ? 'nav-setup' : (viewId === 'view-update' ? 'nav-update' : 'nav-dashboard'));
+  if(activeBtn) activeBtn.classList.add('active');
+
+  document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+  document.getElementById(viewId).classList.add('active');
+
+  if (viewId === 'view-dashboard') renderDashboardData();
+}
+
+// ── RENDER HELPERS ──
+function renderBadge(r) {
+  if (r == null) return '<span class="tag gray">no data</span>';
+  if (r >= 10) return '<span class="tag green">strong</span>';
+  if (r >= 0) return '<span class="tag green">positive</span>';
+  if (r >= -5) return '<span class="tag amber">weak</span>';
+  return '<span class="tag red">down</span>';
+}
+
+function renderStockTable(stocks, sp, cp) {
+  const rows = stocks.map(s => {
+    const a = sp[s.t], b = cp[s.t];
+    const r = (a && b && a > 0) ? (b - a) / a * 100 : null;
+    return {...s, a, b, r};
+  }).sort((x,y) => (y.r ?? -9999) - (x.r ?? -9999));
+
+  const rColor = r => r == null ? "var(--text-muted)" : r >= 0 ? "var(--success)" : "var(--danger)";
+  let html = `<div style="overflow-x:auto"><table>
+    <thead><tr><th>#</th><th>Stock Name</th><th>Base Px</th><th>Current Px</th><th>Return</th><th>Position Value</th><th>Status</th></tr></thead><tbody>`;
+  rows.forEach((s,i) => {
+    const alloc = INITIAL_INVESTMENT / stocks.length;
+    const cVal = s.r != null ? alloc * (1 + s.r/100) : null;
+    html += `<tr>
+      <td style="color:#bbb;font-size:12px">${i+1}</td>
+      <td><div class="ticker">${s.t}</div><div class="sname">${s.n}</div></td>
+      <td style="color:var(--text-muted)">${s.a ? "₹" + s.a.toFixed(0) : "—"}</td>
+      <td style="font-weight:600">${s.b ? "₹" + s.b.toFixed(0) : "—"}</td>
+      <td style="font-weight:600;font-size:15px;color:${rColor(s.r)}">${pct(s.r)}</td>
+      <td style="font-weight:600">${cVal ? fmtMoney(cVal) : "—"}</td>
+      <td>${renderBadge(s.r)}</td>
+    </tr>`;
+  });
+  html += "</tbody></table></div>";
+  return html;
+}
+
+function renderMiniBar(stocks, sp, cp) {
+  const MAX_W = 200;
+  const rows = stocks.map(s => {
+    const a = sp[s.t], b = cp[s.t];
+    const r = (a && b && a > 0) ? (b - a) / a * 100 : 0;
+    return {t: s.t, r};
+  }).sort((a,b) => b.r - a.r);
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.r)), 1);
+  let html = '<div style="padding:8px 0">';
+  for (const row of rows) {
+    const w = Math.abs(row.r) / maxAbs * MAX_W;
+    const col = row.r >= 0 ? "var(--success)" : "var(--danger)";
+    html += `<div class="bar-row">
+      <span class="bar-label">${row.t}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${w.toFixed(1)}px;background:${col};opacity:0.9"></div></div>
+      <span class="bar-val" style="color:${col};">${pct(row.r)}</span>
+    </div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
+function renderLineChart(snaps, streams, sp) {
+  const W = 600, H = 220, PAD = {t:10,r:50,b:30,l:50};
+  const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
+  const data = snaps.map(sn => {
+    const row = {date: fmtD(sn.date)};
+    for (const [k,v] of Object.entries(streams)) {
+      const r = calcRet(v.stocks, sp, sn.prices) || 0;
+      row[k] = INITIAL_INVESTMENT * (1 + r / 100);
+    }
+    return row;
+  });
+  if (data.length < 2) return `<div style="text-align:center;padding:60px 20px;color:var(--text-muted);font-size:14px;background:#f9fafb;border-radius:8px;margin-top:16px;">Graph will generate after your first price update.</div>`;
+
+  const allVals = data.flatMap(d => Object.keys(streams).map(k => d[k]).filter(v => v != null));
+  const minV = Math.min(...allVals, INITIAL_INVESTMENT), maxV = Math.max(...allVals, INITIAL_INVESTMENT);
+  const rangeV = maxV - minV || 1;
+  const xScale = i => PAD.l + (i / (data.length - 1)) * iW;
+  const yScale = v => PAD.t + iH - ((v - minV) / rangeV) * iH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;max-height:280px;margin-top:16px;">`;
+  
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.t + (i / 4) * iH;
+    const val = maxV - (i / 4) * rangeV;
+    svg += `<line x1="${PAD.l}" y1="${y}" x2="${W-PAD.r}" y2="${y}" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 2"/>`;
+    svg += `<text x="${PAD.l-8}" y="${y+4}" text-anchor="end" font-size="10" font-weight="500" fill="var(--text-muted)">${fmtAxis(val)}</text>`;
+  }
+  
+  const y0 = yScale(INITIAL_INVESTMENT);
+  svg += `<line x1="${PAD.l}" y1="${y0}" x2="${W-PAD.r}" y2="${y0}" stroke="var(--text-muted)" stroke-width="1.5"/>`;
+  
+  data.forEach((d,i) => {
+    if (i === 0 || i === data.length-1 || (data.length > 4 && i % Math.floor(data.length/4) === 0)) {
+      svg += `<text x="${xScale(i)}" y="${H-4}" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text-muted)">${d.date}</text>`;
+    }
+  });
+  
+  for (const [k,v] of Object.entries(streams)) {
+    const pts = data.map((d,i) => d[k] != null ? `${xScale(i)},${yScale(d[k])}` : null).filter(Boolean);
+    if (pts.length < 2) continue;
+    svg += `<polyline points="${pts.join(" ")}" fill="none" stroke="${v.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const last = data.findLastIndex(d => d[k] != null);
+    if (last >= 0) {
+      svg += `<circle cx="${xScale(last)}" cy="${yScale(data[last][k])}" r="4" fill="${v.color}" stroke="white" stroke-width="1.5"/>`;
+    }
+  }
+  
+  let lx = PAD.l;
+  for (const [k,v] of Object.entries(streams)) {
+    svg += `<rect x="${lx}" y="${PAD.t-10}" width="12" height="4" rx="2" fill="${v.color}"/>`;
+    svg += `<text x="${lx+18}" y="${PAD.t-6}" font-size="11" font-weight="600" fill="var(--text-main)">${v.label}</text>`;
+    lx += 120;
+  }
+  svg += "</svg>";
+  return svg;
+}
+
+function renderDD(snaps, stocks) {
+  if (!snaps || snaps.length < 2) return null;
+  const sp = snaps[0].prices;
+  let peak = 0, cur = 0;
+  for (const sn of snaps) {
+    const r = calcRet(stocks, sp, sn.prices);
+    if (r != null) { if (r > peak) peak = r; cur = r; }
+  }
+  return cur - peak;
+}
+
+function renderVol(snaps, stocks) {
+  if (!snaps || snaps.length < 3) return null;
+  const sp = snaps[0].prices;
+  const cr = snaps.slice(1).map(sn => calcRet(stocks, sp, sn.prices)).filter(r => r != null);
+  if (cr.length < 2) return null;
+  const pr = cr.map((r,i) => i === 0 ? r : r - cr[i-1]);
+  const m = pr.reduce((a,b) => a+b, 0) / pr.length;
+  return Math.sqrt(pr.reduce((s,r) => s + (r-m)**2, 0) / (pr.length - 1));
+}
+
+// ── CORE LOGIC & RENDER ROUTING ──
+function initApp() {
+  document.getElementById('loader').style.display = 'none';
+  if (state.inited) {
+    document.getElementById('nav-dashboard').disabled = false;
+    document.getElementById('nav-update').disabled = false;
+    document.getElementById('setup-init-area').style.display = 'none';
+    document.getElementById('setup-config-area').style.display = 'none';
+    document.getElementById('setup-active-warning').style.display = 'block';
+    document.getElementById('setup-reset-area').style.display = 'block';
+    switchView('view-dashboard');
+  } else {
+    document.getElementById('nav-dashboard').disabled = true;
+    document.getElementById('nav-update').disabled = true;
+    document.getElementById('setup-init-area').style.display = 'block';
+    document.getElementById('setup-config-area').style.display = 'block';
+    document.getElementById('setup-active-warning').style.display = 'none';
+    document.getElementById('setup-reset-area').style.display = 'none';
+    switchView('view-setup');
+  }
+}
+
+window.renderDashboardData = function() {
+  const sp = state.snaps[0]?.prices || {};
+  const cp = state.snaps[state.snaps.length - 1]?.prices || {};
+  const hasR = state.snaps.length >= 2;
+
+  const streams = {
+    A: {stocks: state.sA, label: LABELS.A, color: COLORS.A},
+    B: {stocks: B, label: LABELS.B, color: COLORS.B},
+    C: {stocks: C, label: LABELS.C, color: COLORS.C},
+    D: {stocks: [BM], label: LABELS.D, color: COLORS.D}
+  };
+  const rets = {};
+  for (const [k,v] of Object.entries(streams)) rets[k] = hasR ? calcRet(v.stocks, sp, cp) : null;
+
+  document.getElementById("hdr-sub").innerHTML =
+    `Started <b>${fmtDF(state.startDate)}</b> &bull; Day ${daysSince(state.startDate)}/365 &bull; ` +
+    (state.snaps.length > 1 ? `<b>${state.snaps.length-1}</b> data point(s)` : "Awaiting first update");
+
+  const lb = document.getElementById("leaderboard");
+  if (!hasR) {
+    lb.innerHTML = `<div class="alert alert-success" style="width:100%">🏁 Tournament Baseline Locked! Live prices will update automatically tomorrow.</div>`;
+  } else {
+    const sorted = Object.entries(rets).filter(([k,v]) => v != null && (k !== "A" || state.sA.length > 0)).sort((a,b) => b[1]-a[1]);
+    lb.innerHTML = sorted.map(([k,r],i) => {
+      const val = INITIAL_INVESTMENT * (1 + r/100);
+      return `
+      <div class="lb-card" style="border-left-color: ${streams[k].color}">
+        <span class="rank">${RANKS[i]||"#"+(i+1)}</span>
+        <div>
+          <div class="lbl">${streams[k].label}</div>
+          <div class="val ${r>=0?"pos":"neg"}">${fmtMoney(val)}</div>
+          <div style="font-size:12px;color:${r>=0?"var(--success)":"var(--danger)"};margin-top:2px;font-weight:600">${pct(r)}</div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  const ovLines = renderLineChart(state.snaps, streams, sp);
+  let ovMetrics = "";
+  if (hasR) {
+    for (const [k,v] of Object.entries(streams)) {
+      if (k === "A" && state.sA.length === 0) continue;
+      const r = rets[k], al = r != null && rets.D != null ? r - rets.D : null;
+      const dr = renderDD(state.snaps, v.stocks), vl = renderVol(state.snaps, v.stocks);
+      const val = INITIAL_INVESTMENT * (1 + r/100);
+      
+      ovMetrics += `<div class="metric-card" style="border-top-color:${v.color}">
+        <div style="font-size:14px;font-weight:600;color:${v.color};margin-bottom:8px;">${v.label}</div>
+        <div class="metric-inner">
+          <div class="metric-box" style="grid-column: span 2; background: ${r>=0?'#f0fdf4':'#fef2f2'}; border-color: ${r>=0?'#bbf7d0':'#fecaca'}">
+            <div class="ml" style="color:${r>=0?'#166534':'#991b1b'}">Current Portfolio Value</div>
+            <div class="mv" style="font-size:24px;color:${r>=0?'#15803d':'#b91c1c'}">${fmtMoney(val)}</div>
+          </div>
+          <div class="metric-box"><div class="ml">Return</div><div class="mv" style="color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)}</div></div>
+          <div class="metric-box"><div class="ml">vs Nifty</div><div class="mv" style="color:${al>=0?"var(--success)":"var(--danger)"}">${pct(al)}</div></div>
+          <div class="metric-box"><div class="ml">Drawdown</div><div class="mv" style="color:${dr<0?"var(--danger)":"var(--text-main)"}">${dr!=null?pct(dr):"—"}</div></div>
+          <div class="metric-box"><div class="ml">Volatility</div><div class="mv" style="color:var(--text-main)">${vl!=null?vl.toFixed(2)+"%":"—"}</div></div>
+        </div>
+      </div>`;
+    }
+  }
+  document.getElementById("tab-overview").innerHTML = `
+    <div class="card" style="border: none; box-shadow: none; padding: 0;">
+      <h2 style="font-size: 18px;">₹1 Crore Growth Curve</h2>
+      ${ovLines}
+    </div>
+    ${hasR ? `<div class="metric-grid">${ovMetrics}</div>` : ""}`;
+
+  const renderStreamTab = (k) => {
+    const v = streams[k];
+    const r = rets[k];
+    const stocks = v.stocks;
+    const val = r != null ? INITIAL_INVESTMENT * (1 + r/100) : null;
+    return `
+      <div class="stream-header" style="border-left-color:${v.color}">
+        <div>
+          <div style="font-weight:600;font-size:18px">${v.label}</div>
+          <div class="text-muted" style="margin-top:4px">${stocks.length} stocks &bull; Equal weight ${fmtMoney(INITIAL_INVESTMENT/stocks.length)} each</div>
+        </div>
+        ${hasR && r != null ? `<div style="text-align:right"><div style="font-size:28px;font-weight:700;color:${r>=0?"var(--success)":"var(--danger)"}">${fmtMoney(val)}</div><div style="font-size:14px;font-weight:600;color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)} total return</div></div>` : ""}
+      </div>
+      ${hasR && stocks.length > 0 ? `<div class="card"><h2 style="margin-bottom:16px;color:var(--text-muted);font-size:12px;text-transform:uppercase;">Individual Stock Performance</h2>${renderMiniBar(stocks,sp,cp)}</div>` : ""}
+      <div class="card" style="padding:0;overflow:hidden;border:none;">${renderStockTable(stocks,sp,cp)}</div>`;
+  };
+  document.getElementById("tab-streamA").innerHTML = state.sA.length > 0 ? renderStreamTab("A") : "<p class='text-muted'>No Stream A tickers set.</p>";
+  document.getElementById("tab-streamB").innerHTML = renderStreamTab("B");
+  document.getElementById("tab-streamC").innerHTML = renderStreamTab("C");
+
+  const allOrder = ["B","C","A","D"].filter(k => k !== "A" || state.sA.length > 0);
+  document.getElementById("tab-all").innerHTML = allOrder.map(k => {
+    const v = streams[k]; const r = rets[k];
+    const val = r != null ? INITIAL_INVESTMENT * (1 + r/100) : null;
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px;box-shadow:var(--shadow-sm)">
+      <div style="padding:16px 20px;background:${v.color};color:#fff;font-weight:600;font-size:16px;display:flex;justify-content:space-between;align-items:center;">
+        <span>${v.label}</span>${hasR&&r!=null?`<span>${fmtMoney(val)} (${pct(r)})</span>`:""}
+      </div>
+      ${renderStockTable(v.stocks,sp,cp)}
+    </div>`;
+  }).join("");
+}
+
+// ── EVENTS ──
+document.getElementById('nav-dashboard').onclick = () => switchView('view-dashboard');
+document.getElementById('nav-update').onclick = () => switchView('view-update');
+document.getElementById('nav-setup').onclick = () => switchView('view-setup');
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    ["overview","streamA","streamB","streamC","all"].forEach(id => {
+      const el = document.getElementById("tab-"+id);
+      if (el) el.style.display = ("tab-"+id === "tab-"+btn.dataset.tab) ? "block" : "none";
+    });
+  };
+});
+
+document.getElementById("setup-tickers").oninput = function() {
+  const count = parseTickers(this.value).length;
+  document.getElementById("setup-count").textContent = `${count}/20 tickers`;
+};
+
+document.getElementById("btn-ask-init").onclick = () => {
+  const tickers = parseTickers(document.getElementById("setup-tickers").value);
+  window.buildPromptAndCopy(allUniq(tickers), "btn-ask-init");
+};
+
+document.getElementById("btn-confirm-init").onclick = async () => {
+  const raw = document.getElementById("setup-paste").value.trim();
+  const err = document.getElementById("setup-err");
+  err.style.display = "none";
+  if (!raw) { err.textContent = "Please paste JSON response first."; err.className = "alert alert-error"; err.style.display = "block"; return; }
+  try {
+    const prices = parseJSON(raw);
+    const sA = parseTickers(document.getElementById("setup-tickers").value);
+    state.inited = true;
+    state.startDate = new Date().toISOString();
+    state.sA = sA;
+    state.snaps = [{date: state.startDate, prices}];
+    await saveState();
+    initApp();
+  } catch(e) {
+    err.textContent = "Parse error: " + e.message;
+    err.className = "alert alert-error";
+    err.style.display = "block";
+  }
+};
+
+document.getElementById("btn-factory-reset").onclick = async () => {
+  if (confirm("Are you sure? This will delete all your tournament data permanently from the cloud.")) {
+    state = {inited:false,startDate:null,sA:[],snaps:[]};
+    await saveState();
+    document.getElementById("setup-paste").value = "";
+    document.getElementById("refresh-paste").value = "";
+    initApp();
+  }
+};
+
+document.getElementById("btn-quick-update").onclick = () => switchView('view-update');
+document.getElementById("btn-cancel-refresh").onclick = () => switchView('view-dashboard');
+
+document.getElementById("btn-ask-refresh").onclick = () => {
+  window.buildPromptAndCopy(allUniq(state.sA), "btn-ask-refresh");
+};
+
+document.getElementById("btn-confirm-refresh").onclick = async () => {
+  const raw = document.getElementById("refresh-paste").value.trim();
+  const err = document.getElementById("refresh-err");
+  err.style.display = "none";
+  if (!raw) { err.textContent = "Please paste JSON response first."; err.className = "alert alert-error"; err.style.display = "block"; return; }
+  try {
+    const prices = parseJSON(raw);
+    state.snaps.push({date: new Date().toISOString(), prices});
+    await saveState();
+    document.getElementById("refresh-paste").value = "";
+    switchView('view-dashboard');
+  } catch(e) {
+    err.textContent = "Parse error: " + e.message;
+    err.className = "alert alert-error";
+    err.style.display = "block";
+  }
+};
+
+// ── BOOT ──
+loadState().then(() => initApp());
+</script>
+</body>
+</html>

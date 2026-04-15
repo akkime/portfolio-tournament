@@ -1,0 +1,11 @@
+{
+  "name": "portfolio-tournament",
+  "version": "1.0.0",
+  "description": "Daily automated stock tracker",
+  "main": "index.js",
+  "dependencies": {
+    "@netlify/functions": "^2.6.0",
+    "@supabase/supabase-js": "^2.39.8",
+    "yahoo-finance2": "^2.11.2"
+  }
+}

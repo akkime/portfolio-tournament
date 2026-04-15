@@ -1,0 +1,13 @@
+[build]
+  # Tell Netlify where your serverless functions live
+  functions = "netlify/functions"
+  
+  # Tell Netlify to serve the root directory
+  publish = "."
+
+# Optional: Redirect root to your HTML file
+[[redirects]]
+  from = "/"
+  to = "/tournament.html"
+  status = 200
+```

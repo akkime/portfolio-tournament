@@ -443,13 +443,17 @@ window.buildPromptAndCopy = function(stocks, btnId) {
   setTimeout(() => { btn.textContent = originalText; }, 3000);
 }
 
-// FIX: Ensure 'a' and 'b' are treated strictly as numbers when calculating returns
+// FIX: Ensure 'a' and 'b' are treated strictly as valid numbers when calculating returns
 function calcRet(stocks, sp, cp) {
   let sum = 0, n = 0;
   for (const s of stocks) {
     const a = sp[s.t] != null ? Number(sp[s.t]) : null;
     const b = cp[s.t] != null ? Number(cp[s.t]) : null;
-    if (a != null && b != null && a > 0) { sum += (b - a) / a * 100; n++; }
+    // We only process if both prices are valid (not missing, null, or NaN)
+    if (a != null && !isNaN(a) && b != null && !isNaN(b) && a > 0) { 
+      sum += (b - a) / a * 100; 
+      n++; 
+    }
   }
   return n > 0 ? sum / n : null;
 }
@@ -489,10 +493,10 @@ function renderBadge(r) {
 
 function renderStockTable(stocks, sp, cp) {
   const rows = stocks.map(s => {
-    // FIX: Force safety numbers directly here before calling .toFixed()
+    // FIX: Only calculate stock return if it has valid numbers
     const a = sp[s.t] != null ? Number(sp[s.t]) : null;
     const b = cp[s.t] != null ? Number(cp[s.t]) : null;
-    const r = (a != null && b != null && a > 0) ? (b - a) / a * 100 : null;
+    const r = (a != null && !isNaN(a) && b != null && !isNaN(b) && a > 0) ? (b - a) / a * 100 : null;
     return {...s, a, b, r};
   }).sort((x,y) => (y.r ?? -9999) - (x.r ?? -9999));
 
@@ -521,7 +525,7 @@ function renderMiniBar(stocks, sp, cp) {
   const rows = stocks.map(s => {
     const a = sp[s.t] != null ? Number(sp[s.t]) : null;
     const b = cp[s.t] != null ? Number(cp[s.t]) : null;
-    const r = (a != null && b != null && a > 0) ? (b - a) / a * 100 : 0;
+    const r = (a != null && !isNaN(a) && b != null && !isNaN(b) && a > 0) ? (b - a) / a * 100 : 0;
     return {t: s.t, r};
   }).sort((a,b) => b.r - a.r);
   const maxAbs = Math.max(...rows.map(r => Math.abs(r.r)), 1);

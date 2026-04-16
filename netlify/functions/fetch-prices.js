@@ -1,20 +1,20 @@
 const { schedule } = require('@netlify/functions');
 const { createClient } = require('@supabase/supabase-js');
-const yahooFinance = require('yahoo-finance2').default;
 
 const handler = async function(event, context) {
-  // Connect to Supabase using Netlify Environment Variables
+  // 1. Connect to Supabase using Netlify Environment Variables
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  const fmpApiKey = process.env.FMP_API_KEY; // Your new official data key!
   
-  if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase env variables!");
+  if (!supabaseUrl || !supabaseKey || !fmpApiKey) {
+    console.error("Missing Environment Variables! Check Supabase and FMP keys.");
     return { statusCode: 500 };
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Fetch the current tournament state
+  // 2. Fetch the current tournament state
   const { data: dbData, error } = await supabase
     .from('tournaments')
     .select('data')
@@ -28,7 +28,7 @@ const handler = async function(event, context) {
 
   const state = dbData.data;
 
-  // Compile all unique tickers
+  // 3. Compile all unique tickers
   const defaultStocks = [
     "HDFCBANK", "ICICIBANK", "BAJAJFINSV", "TITAN", "INFY", "BHARTIARTL",
     "ASIANPAINT", "MARUTI", "KOTAKBANK", "APOLLOHOSP", "LT", "PIDILITIND",
@@ -40,23 +40,32 @@ const handler = async function(event, context) {
   
   const allTickers = [...new Set([...defaultStocks, ...state.sA.map(s => s.t)])];
   
-  // Fetch live prices from Yahoo Finance
+  // 4. Fetch live prices from FMP API (All at once!)
+  // FMP requires the .NS suffix for Indian stocks (e.g., HDFCBANK.NS)
+  const tickerQueryString = allTickers.map(t => `${t}.NS`).join(',');
   const newPrices = {};
-  for (const ticker of allTickers) {
-    try {
-      // Append .NS for NSE India stocks
-      const quote = await yahooFinance.quote(`${ticker}.NS`);
-      if (quote && quote.regularMarketPrice) {
-        newPrices[ticker] = quote.regularMarketPrice;
-      }
-      // Small delay to respect Yahoo API limits
-      await new Promise(r => setTimeout(r, 100));
-    } catch (err) {
-      console.error(`Failed to fetch ${ticker}:`, err.message);
+
+  try {
+    const response = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${tickerQueryString}?apikey=${fmpApiKey}`);
+    
+    if (!response.ok) {
+      throw new Error(`API returned status: ${response.status}`);
     }
+
+    const priceData = await response.json();
+    
+    // priceData is an array: [{symbol: "HDFCBANK.NS", price: 1450.5}, ...]
+    priceData.forEach(item => {
+      const cleanTicker = item.symbol.replace('.NS', ''); // Remove .NS before saving
+      newPrices[cleanTicker] = item.price;
+    });
+
+  } catch (err) {
+    console.error("Failed to fetch from FMP API:", err.message);
+    return { statusCode: 500 }; // Abort if API fails
   }
 
-  // Save the snapshot back to the database
+  // 5. Save the snapshot back to the database
   if (Object.keys(newPrices).length > 0) {
     state.snaps.push({
       date: new Date().toISOString(),
@@ -68,7 +77,9 @@ const handler = async function(event, context) {
       .update({ data: state })
       .eq('user_id', 'admin');
 
-    console.log("Successfully recorded daily price snapshot!");
+    console.log(`Successfully recorded daily price snapshot for ${Object.keys(newPrices).length} stocks!`);
+  } else {
+    console.log("Warning: API succeeded but returned no prices.");
   }
 
   return { statusCode: 200 };

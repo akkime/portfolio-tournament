@@ -5,10 +5,9 @@ const handler = async function(event, context) {
   // 1. Connect to Supabase using Netlify Environment Variables
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-  const fmpApiKey = process.env.FMP_API_KEY; // Your new official data key!
   
-  if (!supabaseUrl || !supabaseKey || !fmpApiKey) {
-    console.error("Missing Environment Variables! Check Supabase and FMP keys.");
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("Missing Supabase env variables!");
     return { statusCode: 500 };
   }
 
@@ -40,29 +39,46 @@ const handler = async function(event, context) {
   
   const allTickers = [...new Set([...defaultStocks, ...state.sA.map(s => s.t)])];
   
-  // 4. Fetch live prices from FMP API (All at once!)
-  // FMP requires the .NS suffix for Indian stocks (e.g., HDFCBANK.NS)
-  const tickerQueryString = allTickers.map(t => `${t}.NS`).join(',');
+  // 4. Fetch live prices via Google Finance (No API Key required!)
   const newPrices = {};
 
-  try {
-    const response = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${tickerQueryString}?apikey=${fmpApiKey}`);
-    
-    if (!response.ok) {
-      throw new Error(`API returned status: ${response.status}`);
+  for (const ticker of allTickers) {
+    try {
+      // Google Finance URL for NSE stocks
+      const url = `https://www.google.com/finance/quote/${ticker}:NSE`;
+      
+      // Spoof a normal web browser to easily bypass bot protection
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const html = await response.text();
+      
+      // Smart Regex to extract the exact price from Google Finance's HTML source code
+      let match = html.match(/data-last-price="([0-9.]+)"/);
+      
+      // Fallback if Google changes their background data tag
+      if (!match) {
+        match = html.match(/class="YMlKec fxKbKc"[^>]*>[^0-9]*([0-9,.]+)/);
+      }
+
+      if (match && match[1]) {
+        // Remove any commas (like 1,450.20 -> 1450.20) and save as clean math number
+        newPrices[ticker] = parseFloat(match[1].replace(/,/g, ''));
+      } else {
+        console.log(`Could not find price in HTML for ${ticker}`);
+      }
+
+      // Polite 250ms delay between requests so Google doesn't block the server
+      await new Promise(r => setTimeout(r, 250));
+
+    } catch (err) {
+      console.error(`Failed to fetch ${ticker} from Google Finance:`, err.message);
     }
-
-    const priceData = await response.json();
-    
-    // priceData is an array: [{symbol: "HDFCBANK.NS", price: 1450.5}, ...]
-    priceData.forEach(item => {
-      const cleanTicker = item.symbol.replace('.NS', ''); // Remove .NS before saving
-      newPrices[cleanTicker] = item.price;
-    });
-
-  } catch (err) {
-    console.error("Failed to fetch from FMP API:", err.message);
-    return { statusCode: 500 }; // Abort if API fails
   }
 
   // 5. Save the snapshot back to the database
@@ -79,7 +95,7 @@ const handler = async function(event, context) {
 
     console.log(`Successfully recorded daily price snapshot for ${Object.keys(newPrices).length} stocks!`);
   } else {
-    console.log("Warning: API succeeded but returned no prices.");
+    console.log("Warning: Script ran but retrieved zero prices.");
   }
 
   return { statusCode: 200 };

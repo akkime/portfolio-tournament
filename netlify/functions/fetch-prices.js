@@ -2,7 +2,7 @@ const { schedule } = require('@netlify/functions');
 const { createClient } = require('@supabase/supabase-js');
 
 const handler = async function(event, context) {
-  // 1. Connect to Supabase using Netlify Environment Variables
+  // 1. Connect to Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   
@@ -38,50 +38,62 @@ const handler = async function(event, context) {
   ];
   
   const allTickers = [...new Set([...defaultStocks, ...state.sA.map(s => s.t)])];
-  
-  // 4. Fetch live prices via Google Finance (No API Key required!)
   const newPrices = {};
 
-  for (const ticker of allTickers) {
+  // 4. Ultra-fast Dual Fetcher Helper
+  const fetchPrice = async (ticker) => {
     try {
-      // Google Finance URL for NSE stocks
-      const url = `https://www.google.com/finance/quote/${ticker}:NSE`;
-      
-      // Spoof a normal web browser to easily bypass bot protection
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+      // METHOD A: Try Yahoo's raw lightweight API first (Extremely fast, JSON)
+      const yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.NS?interval=1d&range=1d`;
+      const yRes = await fetch(yUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' }
       });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
-      const html = await response.text();
-      
-      // Smart Regex to extract the exact price from Google Finance's HTML source code
-      let match = html.match(/data-last-price="([0-9.]+)"/);
-      
-      // Fallback if Google changes their background data tag
-      if (!match) {
-        match = html.match(/class="YMlKec fxKbKc"[^>]*>[^0-9]*([0-9,.]+)/);
+      if (yRes.ok) {
+        const yData = await yRes.json();
+        const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (price && !isNaN(price)) return price;
       }
 
-      if (match && match[1]) {
-        // Remove any commas (like 1,450.20 -> 1450.20) and save as clean math number
-        newPrices[ticker] = parseFloat(match[1].replace(/,/g, ''));
-      } else {
-        console.log(`Could not find price in HTML for ${ticker}`);
+      // METHOD B: Fallback to Google Finance HTML scraping if Yahoo fails
+      const gUrl = `https://www.google.com/finance/quote/${ticker}:NSE`;
+      const gRes = await fetch(gUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' }
+      });
+      
+      if (gRes.ok) {
+        const html = await gRes.text();
+        let match = html.match(/data-last-price="([0-9.]+)"/) || html.match(/class="YMlKec fxKbKc"[^>]*>[^0-9]*([0-9,.]+)/);
+        if (match && match[1]) {
+          return parseFloat(match[1].replace(/,/g, ''));
+        }
       }
-
-      // Polite 250ms delay between requests so Google doesn't block the server
-      await new Promise(r => setTimeout(r, 250));
-
-    } catch (err) {
-      console.error(`Failed to fetch ${ticker} from Google Finance:`, err.message);
+    } catch (e) {
+      console.error(`Error fetching ${ticker}:`, e.message);
     }
+    return null;
+  };
+
+  // 5. Parallel Batching! (Fetch 10 stocks at a time to stay under the 30s timeout)
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < allTickers.length; i += BATCH_SIZE) {
+    const batch = allTickers.slice(i, i + BATCH_SIZE);
+    
+    // Fire off all 10 requests at the exact same time
+    const promises = batch.map(async (ticker) => {
+      const price = await fetchPrice(ticker);
+      if (price) {
+        newPrices[ticker] = price;
+      } else {
+        console.log(`Could not find price for ${ticker}`);
+      }
+    });
+
+    await Promise.all(promises); // Wait for the batch of 10 to finish
+    await new Promise(r => setTimeout(r, 200)); // Tiny 200ms pause between batches
   }
 
-  // 5. Save the snapshot back to the database
+  // 6. Save the snapshot back to the database
   if (Object.keys(newPrices).length > 0) {
     state.snaps.push({
       date: new Date().toISOString(),

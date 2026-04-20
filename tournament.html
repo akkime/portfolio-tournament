@@ -114,6 +114,7 @@ tr:hover { background: #f9fafb; }
 .alert { padding: 12px 16px; border-radius: 8px; margin-top: 12px; font-size: 14px; font-weight: 500; }
 .alert-error { background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; }
 .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #34d399; }
+.alert-amber { background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; }
 
 #loader { position: fixed; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; font-weight: 600; font-size: 18px; color: var(--primary); }
 .loader-msg { font-size: 14px; font-weight: 400; color: var(--text-muted); margin-top: 8px; }
@@ -143,10 +144,6 @@ tr:hover { background: #f9fafb; }
   <!-- ERROR BAR -->
   <div id="connection-error" class="alert alert-error" style="display: none; margin-bottom: 24px; line-height: 1.6;">
     ⚠️ <b>Database Connection Error:</b> <span id="error-text">Unknown error</span>.
-    <div id="missing-table-hint" style="display:none; margin-top: 10px; font-size: 13px; font-weight: normal; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 6px;">
-      <b>Quick Fix:</b> It looks like the 'tournaments' table hasn't been created yet. Open your Supabase SQL Editor and run:<br>
-      <code style="display:block; background:#fff; padding: 5px; margin-top:5px; border:1px solid #f87171;">CREATE TABLE tournaments (user_id TEXT PRIMARY KEY, data JSONB NOT NULL);</code>
-    </div>
   </div>
 
   <!-- SETUP / SETTINGS VIEW -->
@@ -189,14 +186,9 @@ tr:hover { background: #f9fafb; }
 
       <div class="card" id="setup-init-area">
         <h2>Initialize Starting Baseline</h2>
-        <p class="text-muted">Set the initial starting price for the tournament (Day 0). Paste a JSON mapping of your tickers to current prices.</p>
-        <button id="btn-ask-init" class="btn-primary" style="width: 100%; margin-bottom: 20px; padding: 12px;">📋 Copy Price Request Prompt for LLM</button>
-        
-        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Paste JSON Response here:</label>
-        <textarea id="setup-paste" rows="5" placeholder='{"HDFCBANK": 1440.5, "NIFTYBEES": 265.1, ...}'></textarea>
-        <div id="setup-err" style="display: none;"></div>
-        
-        <button id="btn-confirm-init" class="btn-primary" style="width: 100%; margin-top: 16px; padding: 12px; background: var(--success);">🚀 Start Tournament — Lock Base Prices</button>
+        <p class="text-muted">Lock in the exact stock prices for Day 0. This will fetch current prices directly from Yahoo & Google Finance.</p>
+        <div id="setup-status" class="alert alert-amber" style="display: none; margin-bottom: 16px;"></div>
+        <button id="btn-auto-init" class="btn-primary" style="width: 100%; padding: 12px; background: var(--success); font-size: 16px;">🚀 One-Click Fetch Live Prices & Start Tournament</button>
       </div>
 
       <div class="card" id="setup-reset-area" style="display: none; border-color: var(--danger);">
@@ -243,23 +235,17 @@ tr:hover { background: #f9fafb; }
     <div style="max-width: 600px; margin: 0 auto;">
       <div style="margin-bottom: 32px;">
         <h1>Manual Price Override</h1>
-        <p class="text-muted">The background Netlify cron job handles this automatically at 4:30 PM daily. Use this screen only to force a manual snapshot right now.</p>
+        <p class="text-muted">The background Netlify cron job handles this automatically at 4:30 PM daily. Use this screen only to force an immediate snapshot right now.</p>
       </div>
 
       <div class="card">
-        <button id="btn-ask-refresh" class="btn-primary" style="width: 100%; margin-bottom: 24px; padding: 12px;">📋 Copy LLM Prompt</button>
-        
-        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Paste LLM JSON Response:</label>
-        <textarea id="refresh-paste" rows="6" placeholder='{"HDFCBANK": 1455.2, "NIFTYBEES": 268.0, ...}'></textarea>
-        <div id="refresh-err" style="display: none;"></div>
-        
-        <div style="display: flex; gap: 12px; margin-top: 16px;">
-          <button id="btn-cancel-refresh" style="flex: 1;">Cancel</button>
-          <button id="btn-confirm-refresh" class="btn-primary" style="flex: 2; background: var(--success);">💾 Force Manual Snapshot</button>
-        </div>
+        <h2 style="margin-bottom: 16px;">Fetch Latest Market Prices</h2>
+        <div id="refresh-status" class="alert alert-amber" style="display: none; margin-bottom: 16px;"></div>
+        <button id="btn-auto-refresh" class="btn-primary" style="width: 100%; margin-bottom: 16px; padding: 12px; background: var(--success);">🔄 Fetch Current Prices Now</button>
+        <button id="btn-cancel-refresh" style="width: 100%;">Cancel & Go Back</button>
       </div>
 
-      <!-- NEW: Snapshot History Manager -->
+      <!-- Snapshot History Manager -->
       <div class="card" style="margin-top: 24px;">
         <h2>Snapshot History</h2>
         <p class="text-muted" style="margin-bottom: 16px;">Review or delete specific price updates if they are incorrect.</p>
@@ -310,28 +296,7 @@ const C = [
   {t:"TVSMOTOR",n:"TVS Motor"},{t:"INDIGO",n:"IndiGo"}
 ];
 const BM = {t:"NIFTYBEES",n:"Nifty 50 ETF"};
-const RATIONALE = {
-  HDFCBANK:"HDFC merger synergies · best-run private bank",
-  ICICIBANK:"Superior ROE · outperforming on NIM",
-  BAJAJFINSV:"Bajaj Finance parent · insurance upside",
-  TITAN:"Jewellery formalisation · Tanishq moat",
-  INFY:"AI deal wins · Cobalt cloud",
-  BHARTIARTL:"ARPU expansion · telecom oligopoly",
-  ASIANPAINT:"80% market share · pricing power",
-  MARUTI:"Car ownership 30/1000 vs global 180/1000",
-  KOTAKBANK:"Conservative credit · digital push",
-  APOLLOHOSP:"Healthcare quality gap · Apollo 24/7",
-  LT:"Capex supercycle · defence + infra",
-  PIDILITIND:"Fevicol monopoly · pricing power",
-  DIVISLAB:"Global API · China+1 beneficiary",
-  COFORGE:"BFS + insurance · Cigniti moat",
-  HDFCLIFE:"3.2% vs 7%+ global penetration",
-  TRENT:"Zudio · fastest growing retail",
-  ETERNAL:"Zomato + Blinkit · quick commerce",
-  ABB:"India electrification + automation",
-  CHOLAFIN:"Best asset quality in NBFC space",
-  NESTLEIND:"Maggi monopoly · distribution moat"
-};
+
 const COLORS = {A:"#7f77dd",B:"#1d9e75",C:"#378add",D:"#ef9f27"};
 const LABELS = {A:"Your Screener",B:"Conviction Picks",C:"Your Portfolio",D:"Nifty 50"};
 const RANKS = ["🥇","🥈","🥉","4️⃣"];
@@ -358,97 +323,81 @@ async function saveState() {
 
 async function loadState() {
   if (!supabaseClient) {
-    showError("Supabase client not initialized. Check your URL/Key.");
+    showError("Supabase client not initialized.");
     return;
   }
   try {
     const { data, error } = await supabaseClient.from('tournaments').select('data').eq('user_id', 'admin').single();
-    
-    if (error) {
-      if (error.code === 'PGRST205') {
-        showError("Table 'tournaments' not found in your Supabase database.");
-        document.getElementById('missing-table-hint').style.display = 'block';
-        return;
-      }
-      if (error.code !== 'PGRST116') throw error;
-    }
-
-    if (data && data.data && data.data.inited) {
-      state = data.data;
-    }
+    if (error && error.code !== 'PGRST116') throw error;
+    if (data && data.data && data.data.inited) state = data.data;
   } catch(e) { 
-    console.error("Cloud load failed", e);
     showError(e.message || "Could not connect to Supabase database.");
   }
 }
 
 function showError(msg) {
   const errBox = document.getElementById('connection-error');
-  const errText = document.getElementById('error-text');
-  errText.textContent = msg;
+  document.getElementById('error-text').textContent = msg;
   errBox.style.display = 'block';
 }
 
-// ── UTILS ──
-function parseJSON(text) {
-  let parsed = null;
+// ── AUTO-FETCHER ENGINE (CORS Proxy) ──
+const delay = ms => new Promise(res => setTimeout(res, ms));
+
+async function fetchPriceFrontend(ticker) {
+  // Use allOrigins public proxy to bypass CORS restrictions in the browser
   try {
-    const m = text.match(/`{3}(?:json)?\s*([\s\S]+?)`{3}/);
-    if (m) {
-      parsed = JSON.parse(m[1].trim());
-    } else {
-      const s = text.indexOf("{");
-      const sArr = text.indexOf("[");
-      const first = (s !== -1 && sArr !== -1) ? Math.min(s, sArr) : Math.max(s, sArr);
-      const e = text.lastIndexOf("}");
-      const eArr = text.lastIndexOf("]");
-      const last = Math.max(e, eArr);
-      if (first === -1 || last === -1 || last <= first) throw new Error("No JSON found.");
-      parsed = JSON.parse(text.slice(first, last + 1));
+    const yUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.NS?interval=1d&range=1d`);
+    const yRes = await fetch(`https://api.allorigins.win/raw?url=${yUrl}`);
+    if (yRes.ok) {
+      const yData = await yRes.json();
+      const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      if (price && !isNaN(price)) return price;
     }
-  } catch (e) {
-    throw new Error("Could not extract valid JSON from the LLM response. Ensure it provided proper JSON code.");
-  }
-  
-  let cleanPrices = {};
+  } catch(e) {}
 
-  if (Array.isArray(parsed)) {
-    parsed.forEach(item => {
-      if (typeof item === 'object') {
-        for (let k in item) cleanPrices[k.toUpperCase()] = item[k];
+  // Fallback to Google Finance
+  try {
+    const gUrl = encodeURIComponent(`https://www.google.com/finance/quote/${ticker}:NSE`);
+    const gRes = await fetch(`https://api.allorigins.win/raw?url=${gUrl}`);
+    if (gRes.ok) {
+      const html = await gRes.text();
+      let match = html.match(/data-last-price="([0-9.]+)"/) || html.match(/class="YMlKec fxKbKc"[^>]*>[^0-9]*([0-9,.]+)/);
+      if (match && match[1]) {
+        return parseFloat(match[1].replace(/,/g, ''));
       }
-    });
-  } 
-  else if (parsed.prices && typeof parsed.prices === 'object') {
-    for (let k in parsed.prices) cleanPrices[k.toUpperCase()] = parsed.prices[k];
-  }
-  else {
-    for (let k in parsed) cleanPrices[k.toUpperCase()] = parsed[k];
+    }
+  } catch(e) {}
+  return null;
+}
+
+async function fetchAllPricesWithProgress(tickers, statusElId) {
+  const statusEl = document.getElementById(statusElId);
+  const prices = {};
+  const failed = [];
+  statusEl.style.display = 'block';
+  statusEl.className = 'alert alert-amber';
+
+  for (let i = 0; i < tickers.length; i++) {
+    const t = tickers[i];
+    statusEl.innerHTML = `⏳ Fetching <b>${t}</b> (${i+1}/${tickers.length})...`;
+    const p = await fetchPriceFrontend(t);
+    if (p) {
+        prices[t] = p;
+    } else {
+        failed.push(t);
+    }
+    await delay(250); // Polite delay to prevent rate-limiting from the proxy
   }
 
-  const finalPrices = {};
-  for (let k in cleanPrices) {
-    let val = cleanPrices[k];
-    
-    if (typeof val === 'object' && val !== null) {
-      val = val.price || val.PRICE || val.close || Object.values(val)[0];
-    }
-    
-    if (typeof val === 'string') {
-      val = parseFloat(val.replace(/,/g, '').replace(/₹/g, '').replace(/[^\d.-]/g, ''));
-    }
-    
-    if (typeof val === 'number' && !isNaN(val)) {
-      let cleanK = k.replace(/[^A-Z0-9-]/gi, '');
-      if (cleanK) finalPrices[cleanK] = val;
-    }
+  if (failed.length > 0) {
+     statusEl.className = 'alert alert-error';
+     statusEl.innerHTML = `⚠️ Fetched partial data. Failed: ${failed.join(', ')}.`;
+  } else {
+     statusEl.className = 'alert alert-success';
+     statusEl.innerHTML = `✅ Successfully fetched all ${tickers.length} prices!`;
   }
-
-  if (Object.keys(finalPrices).length === 0) {
-    throw new Error("Found JSON, but could not extract any stock prices from it.");
-  }
-  
-  return finalPrices;
+  return prices;
 }
 
 function parseTickers(raw) {
@@ -461,34 +410,7 @@ function allUniq(sA) {
   return all.filter(s=>{ if(seen.has(s.t)) return false; seen.add(s.t); return true; });
 }
 
-window.buildPromptAndCopy = function(stocks, btnId) {
-  const prompt = `Please search the web for current NSE India stock prices. Reply with ONLY a JSON code block, no other text.\n\nTickers: ${stocks.map(s=>s.t).join(", ")}\n\nFormat:\n\`\`\`json\n{"TICKER": price}\n\`\`\``;
-  
-  const textArea = document.createElement("textarea");
-  textArea.value = prompt;
-  textArea.style.top = "0";
-  textArea.style.left = "0";
-  textArea.style.position = "fixed";
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-  
-  let success = false;
-  try { success = document.execCommand('copy'); } catch (err) {}
-  document.body.removeChild(textArea);
-  
-  const btn = document.getElementById(btnId);
-  const originalText = btn.textContent;
-  
-  if (success) {
-    btn.textContent = "✅ Prompt Copied! Paste into LLM.";
-  } else {
-    btn.textContent = "❌ Copy failed. Please copy manually.";
-  }
-  
-  setTimeout(() => { btn.textContent = originalText; }, 3000);
-}
-
+// ── CALCULATIONS ──
 function calcRet(stocks, sp, cp) {
   let sum = 0, n = 0;
   for (const s of stocks) {
@@ -528,7 +450,7 @@ window.switchView = function(viewId) {
   if (viewId === 'view-update') renderSnapshotList();
 }
 
-// NEW: Snapshot rendering and deletion logic
+// ── HISTORY LIST ──
 function renderSnapshotList() {
   const list = document.getElementById("snapshot-list");
   if (!state.snaps || state.snaps.length === 0) {
@@ -539,7 +461,6 @@ function renderSnapshotList() {
   let html = '<table style="width:100%; border-collapse: collapse; font-size: 14px;">';
   html += '<thead><tr><th style="text-align:left; padding-bottom:8px; border-bottom:1px solid var(--border);">Date</th><th style="text-align:center; padding-bottom:8px; border-bottom:1px solid var(--border);">Prices Logged</th><th style="text-align:right; padding-bottom:8px; border-bottom:1px solid var(--border);">Action</th></tr></thead><tbody>';
   
-  // Map in reverse so newest is on top
   const reversedSnaps = state.snaps.map((s, i) => ({...s, originalIndex: i})).reverse();
 
   reversedSnaps.forEach((snap) => {
@@ -722,15 +643,9 @@ function renderVol(snaps, stocks) {
 function initApp() {
   document.getElementById('loader').style.display = 'none';
   
-  // --- ADMIN MODE LOGIC ---
   const urlParams = new URLSearchParams(window.location.search);
-  
-  // Check if they want to turn admin on or explicitly turn it off
-  if (urlParams.get('admin') === 'true') {
-    localStorage.setItem('admin_mode', 'true');
-  } else if (urlParams.get('admin') === 'false') {
-    localStorage.removeItem('admin_mode'); // Erase the VIP pass!
-  }
+  if (urlParams.get('admin') === 'true') localStorage.setItem('admin_mode', 'true');
+  else if (urlParams.get('admin') === 'false') localStorage.removeItem('admin_mode');
   
   const isAdmin = localStorage.getItem('admin_mode') === 'true';
 
@@ -739,7 +654,6 @@ function initApp() {
     document.getElementById('nav-update').style.display = 'none';
     if(document.getElementById('btn-quick-update')) document.getElementById('btn-quick-update').style.display = 'none';
   }
-  // -------------------------
 
   if (state.inited) {
     document.getElementById('nav-dashboard').disabled = false;
@@ -893,29 +807,28 @@ document.getElementById("setup-tickers").oninput = function() {
   document.getElementById("setup-count").textContent = `${count}/20 tickers`;
 };
 
-document.getElementById("btn-ask-init").onclick = () => {
-  const tickers = parseTickers(document.getElementById("setup-tickers").value);
-  window.buildPromptAndCopy(allUniq(tickers), "btn-ask-init");
-};
-
-document.getElementById("btn-confirm-init").onclick = async () => {
-  const raw = document.getElementById("setup-paste").value.trim();
-  const err = document.getElementById("setup-err");
-  err.style.display = "none";
-  if (!raw) { err.textContent = "Please paste JSON response first."; err.className = "alert alert-error"; err.style.display = "block"; return; }
-  try {
-    const prices = parseJSON(raw);
-    const sA = parseTickers(document.getElementById("setup-tickers").value);
+// --- NEW BUTTON: ONE-CLICK INITIALIZE ---
+document.getElementById("btn-auto-init").onclick = async function() {
+  const btn = this;
+  btn.disabled = true;
+  
+  const sA = parseTickers(document.getElementById("setup-tickers").value);
+  const tickersToFetch = allUniq(sA).map(s => s.t);
+  
+  const prices = await fetchAllPricesWithProgress(tickersToFetch, "setup-status");
+  
+  if (Object.keys(prices).length > 0) {
     state.inited = true;
     state.startDate = new Date().toISOString();
     state.sA = sA;
     state.snaps = [{date: state.startDate, prices}];
     await saveState();
-    initApp();
-  } catch(e) {
-    err.textContent = "Parse error: " + e.message;
-    err.className = "alert alert-error";
-    err.style.display = "block";
+    setTimeout(() => {
+      initApp();
+      btn.disabled = false;
+    }, 1500);
+  } else {
+    btn.disabled = false;
   }
 };
 
@@ -923,8 +836,6 @@ document.getElementById("btn-factory-reset").onclick = async () => {
   if (confirm("Are you sure? This will delete all your tournament data permanently from the cloud.")) {
     state = {inited:false,startDate:null,sA:[],snaps:[]};
     await saveState();
-    document.getElementById("setup-paste").value = "";
-    document.getElementById("refresh-paste").value = "";
     initApp();
   }
 };
@@ -932,25 +843,24 @@ document.getElementById("btn-factory-reset").onclick = async () => {
 document.getElementById("btn-quick-update").onclick = () => switchView('view-update');
 document.getElementById("btn-cancel-refresh").onclick = () => switchView('view-dashboard');
 
-document.getElementById("btn-ask-refresh").onclick = () => {
-  window.buildPromptAndCopy(allUniq(state.sA), "btn-ask-refresh");
-};
-
-document.getElementById("btn-confirm-refresh").onclick = async () => {
-  const raw = document.getElementById("refresh-paste").value.trim();
-  const err = document.getElementById("refresh-err");
-  err.style.display = "none";
-  if (!raw) { err.textContent = "Please paste JSON response first."; err.className = "alert alert-error"; err.style.display = "block"; return; }
-  try {
-    const prices = parseJSON(raw);
+// --- NEW BUTTON: ONE-CLICK MANUAL OVERRIDE ---
+document.getElementById("btn-auto-refresh").onclick = async function() {
+  const btn = this;
+  btn.disabled = true;
+  
+  const tickersToFetch = allUniq(state.sA).map(s => s.t);
+  const prices = await fetchAllPricesWithProgress(tickersToFetch, "refresh-status");
+  
+  if (Object.keys(prices).length > 0) {
     state.snaps.push({date: new Date().toISOString(), prices});
     await saveState();
-    document.getElementById("refresh-paste").value = "";
-    switchView('view-dashboard');
-  } catch(e) {
-    err.textContent = "Parse error: " + e.message;
-    err.className = "alert alert-error";
-    err.style.display = "block";
+    setTimeout(() => {
+      switchView('view-dashboard');
+      document.getElementById("refresh-status").style.display = 'none';
+      btn.disabled = false;
+    }, 1500);
+  } else {
+    btn.disabled = false;
   }
 };
 

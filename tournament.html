@@ -186,7 +186,7 @@ tr:hover { background: #f9fafb; }
 
       <div class="card" id="setup-init-area">
         <h2>Initialize Starting Baseline</h2>
-        <p class="text-muted">Lock in the exact stock prices for Day 0. This will fetch current prices directly from Yahoo & Google Finance.</p>
+        <p class="text-muted">Lock in the exact stock prices for Day 0. This will securely fetch current prices via your Netlify backend server.</p>
         <div id="setup-status" class="alert alert-amber" style="display: none; margin-bottom: 16px;"></div>
         <div id="setup-log" style="display: none; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #111827; color: #10b981; padding: 12px; border-radius: 8px; margin-bottom: 16px; line-height: 1.5; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);"></div>
         <div style="display: flex; gap: 12px;">
@@ -349,88 +349,45 @@ function showError(msg) {
   errBox.style.display = 'block';
 }
 
-// ── AUTO-FETCHER ENGINE (CORS Proxy) ──
-const delay = ms => new Promise(res => setTimeout(res, ms));
+// ── AUTO-FETCHER ENGINE (Netlify Backend) ──
 let fetchAbortController = null;
 
 async function fetchPricesBatch(tickers, signal, logFn) {
-  const prices = {};
-  const failed = [];
-  const batchSize = 20; // Massive speedup: Fetch 20 stocks in a single URL request
-  
-  for (let i = 0; i < tickers.length; i += batchSize) {
-    if (signal && signal.aborted) throw new Error("Aborted by user");
-    
-    const batch = tickers.slice(i, i + batchSize);
-    const symbols = batch.map(t => `${t}.NS`).join(',');
-    logFn(`[API] Fetching batch: ${batch.join(', ')}`);
-    
-    try {
-      // Use Yahoo's v7 quote endpoint which accepts comma-separated lists
-      const yUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`);
-      const yRes = await fetch(`https://api.allorigins.win/raw?url=${yUrl}`, { signal });
-      
-      if (yRes.ok) {
-        const yData = await yRes.json();
-        const results = yData?.quoteResponse?.result || [];
-        
-        const found = new Set();
-        results.forEach(q => {
-          const ticker = q.symbol.replace('.NS', '');
-          if (q.regularMarketPrice) {
-            prices[ticker] = q.regularMarketPrice;
-            found.add(ticker);
-            logFn(`[SUCCESS] ${ticker}: ₹${q.regularMarketPrice}`);
-          }
-        });
-        
-        // Log individual misses within the batch
-        batch.forEach(t => {
-          if (!found.has(t)) failed.push(t);
-        });
-      } else {
-        logFn(`[ERROR] Primary API rejected batch. Queuing for fallback...`);
-        failed.push(...batch);
-      }
-    } catch (e) {
-      if (e.name === 'AbortError' || (signal && signal.aborted)) throw new Error("Aborted by user");
-      logFn(`[ERROR] Network timeout. Queuing for fallback...`);
-      failed.push(...batch);
+  logFn(`[SYSTEM] Routing request through secure Netlify backend...`);
+  logFn(`[API] Fetching ${tickers.length} tickers simultaneously...`);
+
+  try {
+    // Ping your exact new serverless function
+    const response = await fetch(`/.netlify/functions/manual-fetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tickers }),
+      signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Backend server returned HTTP ${response.status}`);
     }
-  }
-  
-  // Scraper Fallback Engine for missed tickers
-  if (failed.length > 0) {
-    logFn(`[SYSTEM] Initiating fallback engine for ${failed.length} missing stocks...`);
-    for(let i = 0; i < failed.length; i += 3) {
-      if (signal && signal.aborted) throw new Error("Aborted by user");
-      const chunk = failed.slice(i, i+3);
-      
-      await Promise.all(chunk.map(async (t) => {
-        try {
-          logFn(`[FALLBACK] Scraping ${t}...`);
-          const gUrl = encodeURIComponent(`https://www.google.com/finance/quote/${t}:NSE`);
-          const gRes = await fetch(`https://api.allorigins.win/raw?url=${gUrl}`, { signal });
-          if (gRes.ok) {
-            const html = await gRes.text();
-            let match = html.match(/data-last-price="([0-9.]+)"/) || html.match(/class="YMlKec fxKbKc"[^>]*>[^0-9]*([0-9,.]+)/);
-            if (match && match[1]) {
-              const p = parseFloat(match[1].replace(/,/g, ''));
-              prices[t] = p;
-              logFn(`[SUCCESS] (Fallback) ${t}: ₹${p}`);
-              return;
-            }
-          }
-          logFn(`[FAIL] Dead link for ${t}`);
-        } catch (e) {
-          if (e.name === 'AbortError') return;
-          logFn(`[FAIL] Network error scraping ${t}`);
-        }
-      }));
-      await delay(300); // Polite proxy delay
+
+    const data = await response.json();
+
+    // Stream the backend logs into the frontend terminal UI
+    if (data.logs && Array.isArray(data.logs)) {
+      data.logs.forEach(msg => logFn(msg));
     }
+
+    if (data.error) {
+      logFn(`[ERROR] Backend reported: ${data.error}`);
+    }
+
+    return data.prices || {};
+
+  } catch (e) {
+    if (e.name === 'AbortError' || (signal && signal.aborted)) {
+      throw new Error("Aborted by user");
+    }
+    throw e;
   }
-  return prices;
 }
 
 async function fetchAllPricesWithProgress(tickers, statusElId, logElId, btnFetchId, btnCancelId) {
@@ -441,10 +398,10 @@ async function fetchAllPricesWithProgress(tickers, statusElId, logElId, btnFetch
   
   statusEl.style.display = 'block';
   statusEl.className = 'alert alert-amber';
-  statusEl.innerHTML = `⏳ Fetching prices for ${tickers.length} stocks...`;
+  statusEl.innerHTML = `⏳ Requesting ${tickers.length} prices from backend...`;
   
   logEl.style.display = 'block';
-  logEl.innerHTML = `> INITIALIZING SECURE DATA PIPELINE...<br>> TARGET: ${tickers.length} ASSETS<br>`;
+  logEl.innerHTML = `> INITIALIZING SECURE SERVER CONNECTION...<br>> TARGET: ${tickers.length} ASSETS<br>`;
   
   btnFetch.style.display = 'none';
   btnCancel.style.display = 'block';
@@ -465,7 +422,7 @@ async function fetchAllPricesWithProgress(tickers, statusElId, logElId, btnFetch
     const fetchedCount = Object.keys(prices).length;
     if (fetchedCount === 0) {
       statusEl.className = 'alert alert-error';
-      statusEl.innerHTML = `⚠️ Failed to fetch any prices. Verify your connection.`;
+      statusEl.innerHTML = `⚠️ Failed to fetch any prices. Verify backend connectivity.`;
     } else if (fetchedCount < tickers.length) {
       statusEl.className = 'alert alert-error';
       statusEl.innerHTML = `⚠️ Partial success: ${fetchedCount}/${tickers.length} retrieved in ${elapsed}s. Check logs.`;

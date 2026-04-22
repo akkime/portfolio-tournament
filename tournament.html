@@ -213,6 +213,9 @@ tr:hover { background: #f9fafb; }
       <button id="btn-quick-update" class="btn-primary">🔄 Manual Update Override</button>
     </div>
 
+    <!-- NEW: Missing Data Alert Container -->
+    <div id="missing-alert-container"></div>
+
     <div id="leaderboard" class="leaderboard"></div>
 
     <div class="card" style="padding: 0;">
@@ -741,6 +744,22 @@ window.renderDashboardData = function() {
   const cp = state.snaps[state.snaps.length - 1]?.prices || {};
   const hasR = state.snaps.length >= 2;
 
+  // --- NEW: DETECT MISSING DATA & RENDER PATCH BUTTON ---
+  const lastSnap = state.snaps[state.snaps.length - 1];
+  const missingStocks = state.inited ? allUniq(state.sA).filter(s => lastSnap.prices[s.t] == null || isNaN(lastSnap.prices[s.t])) : [];
+  
+  const alertContainer = document.getElementById("missing-alert-container");
+  if (missingStocks.length > 0) {
+    alertContainer.innerHTML = `
+      <div class="alert alert-amber" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 24px; flex-wrap:wrap; gap:12px;">
+        <div>⚠️ <b>Missing Data:</b> ${missingStocks.length} stock(s) returned blank (e.g. ${missingStocks.slice(0,3).map(s=>s.t).join(', ')}). This usually happens if the ticker symbol has a typo.</div>
+        <button class="btn-primary" style="background:#d97706; padding:8px 16px;" onclick="patchMissingData()">✏️ Manually Patch Prices</button>
+      </div>`;
+  } else {
+    alertContainer.innerHTML = "";
+  }
+  // --------------------------------------------------------
+
   const streams = {
     A: {stocks: state.sA, label: LABELS.A, color: COLORS.A},
     B: {stocks: B, label: LABELS.B, color: COLORS.B},
@@ -911,6 +930,29 @@ document.getElementById("btn-auto-refresh").onclick = async function() {
 
 document.getElementById("btn-cancel-auto-refresh").onclick = () => {
   if (fetchAbortController) fetchAbortController.abort();
+};
+
+// --- NEW BUTTON: PATCH MISSING DATA ---
+window.patchMissingData = async function() {
+  const lastSnap = state.snaps[state.snaps.length - 1];
+  const missingStocks = allUniq(state.sA).filter(s => lastSnap.prices[s.t] == null || isNaN(lastSnap.prices[s.t]));
+  
+  let updated = false;
+  for (const s of missingStocks) {
+    const val = prompt(`Enter the current price for ${s.t}\n(Leave blank to skip)`);
+    if (val !== null && val.trim() !== "") {
+      const num = parseFloat(val.replace(/,/g, '').replace(/₹/g, ''));
+      if (!isNaN(num)) {
+        lastSnap.prices[s.t] = num;
+        updated = true;
+      }
+    }
+  }
+  
+  if (updated) {
+    await saveState();
+    renderDashboardData();
+  }
 };
 
 // ── BOOT ──

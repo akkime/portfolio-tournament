@@ -26,6 +26,9 @@ const handler = async function(event, context) {
   }
 
   const state = dbData.data;
+  
+  // ---> NEW: Grab yesterday's snapshot to compare <---
+  const lastSnapshot = state.snaps.length > 0 ? state.snaps[state.snaps.length - 1].prices : {};
 
   // 3. Compile all unique tickers
   const defaultStocks = [
@@ -95,6 +98,22 @@ const handler = async function(event, context) {
 
   // 6. Save the snapshot back to the database
   if (Object.keys(newPrices).length > 0) {
+    
+    // ---> NEW: HOLIDAY / WEEKEND DETECTOR <---
+    let isMarketChanged = false;
+    for (const ticker in newPrices) {
+      if (newPrices[ticker] !== lastSnapshot[ticker]) {
+        isMarketChanged = true;
+        break; // Even if one stock moved 0.01 rupees, the market was open!
+      }
+    }
+
+    if (!isMarketChanged) {
+      console.log("Market is closed (Weekend/Holiday). Prices are identical to yesterday. Skipping save.");
+      return { statusCode: 200 };
+    }
+    // -----------------------------------------
+
     state.snaps.push({
       date: new Date().toISOString(),
       prices: newPrices

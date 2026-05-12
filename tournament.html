@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portfolio Tournament 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
@@ -127,7 +126,6 @@ tr:hover { background: #f9fafb; }
   <div class="loader-msg" id="loader-msg">Connecting to Supabase Database</div>
 </div>
 
-<!-- NAVIGATION BAR -->
 <nav class="navbar">
   <div class="nav-brand">
     <span>🏆</span> Portfolio Tournament
@@ -141,12 +139,10 @@ tr:hover { background: #f9fafb; }
 
 <div class="container">
   
-  <!-- ERROR BAR -->
   <div id="connection-error" class="alert alert-error" style="display: none; margin-bottom: 24px; line-height: 1.6;">
     ⚠️ <b>Database Connection Error:</b> <span id="error-text">Unknown error</span>.
   </div>
 
-  <!-- SETUP / SETTINGS VIEW -->
   <div id="view-setup" class="view-section active">
     <div style="max-width: 800px; margin: 0 auto;" id="setup-wrapper">
       <div style="text-align: center; margin-bottom: 40px;">
@@ -203,7 +199,6 @@ tr:hover { background: #f9fafb; }
     </div>
   </div>
 
-  <!-- DASHBOARD VIEW -->
   <div id="view-dashboard" class="view-section">
     <div class="dashboard-header">
       <div>
@@ -212,9 +207,6 @@ tr:hover { background: #f9fafb; }
       </div>
       <button id="btn-quick-update" class="btn-primary">🔄 Manual Update Override</button>
     </div>
-
-    <!-- NEW: Missing Data Alert Container -->
-    <div id="missing-alert-container"></div>
 
     <div id="leaderboard" class="leaderboard"></div>
 
@@ -237,7 +229,6 @@ tr:hover { background: #f9fafb; }
     </div>
   </div>
 
-  <!-- UPDATE PRICES VIEW -->
   <div id="view-update" class="view-section">
     <div style="max-width: 600px; margin: 0 auto;">
       <div style="margin-bottom: 32px;">
@@ -256,7 +247,6 @@ tr:hover { background: #f9fafb; }
         <button id="btn-cancel-refresh" style="width: 100%;">Cancel & Go Back</button>
       </div>
 
-      <!-- Snapshot History Manager -->
       <div class="card" style="margin-top: 24px;">
         <h2>Snapshot History</h2>
         <p class="text-muted" style="margin-bottom: 16px;">Review or delete specific price updates if they are incorrect.</p>
@@ -564,17 +554,19 @@ function renderBadge(r) {
   return '<span class="tag red">down</span>';
 }
 
-function renderStockTable(stocks, sp, cp) {
+function renderStockTable(stocks, sp, cp, pp) {
   const rows = stocks.map(s => {
     const a = parseFloat(sp[s.t]);
     const b = parseFloat(cp[s.t]);
+    const prev = pp ? parseFloat(pp[s.t]) : null;
     const r = (!isNaN(a) && !isNaN(b) && a > 0) ? (b - a) / a * 100 : null;
-    return {...s, a, b, r};
+    const r1d = (!isNaN(prev) && !isNaN(b) && prev > 0) ? (b - prev) / prev * 100 : null;
+    return {...s, a, b, r, r1d};
   }).sort((x,y) => (y.r ?? -9999) - (x.r ?? -9999));
 
   const rColor = r => (r == null || isNaN(r)) ? "var(--text-muted)" : r >= 0 ? "var(--success)" : "var(--danger)";
   let html = `<div style="overflow-x:auto"><table>
-    <thead><tr><th>#</th><th>Stock Name</th><th>Base Px</th><th>Current Px</th><th>Return</th><th>Position Value</th><th>Status</th></tr></thead><tbody>`;
+    <thead><tr><th>#</th><th>Stock Name</th><th>Base Px</th><th>Current Px</th><th>1D Return</th><th>Total Return</th><th>Position Value</th><th>Status</th></tr></thead><tbody>`;
   rows.forEach((s,i) => {
     const alloc = INITIAL_INVESTMENT / stocks.length;
     const cVal = (s.r != null && !isNaN(s.r)) ? alloc * (1 + s.r/100) : null;
@@ -583,6 +575,7 @@ function renderStockTable(stocks, sp, cp) {
       <td><div class="ticker">${s.t}</div><div class="sname">${s.n}</div></td>
       <td style="color:var(--text-muted)">${!isNaN(s.a) ? "₹" + s.a.toFixed(0) : "—"}</td>
       <td style="font-weight:600">${!isNaN(s.b) ? "₹" + s.b.toFixed(0) : "—"}</td>
+      <td style="font-weight:600;font-size:14px;color:${rColor(s.r1d)}">${pct(s.r1d)}</td>
       <td style="font-weight:600;font-size:15px;color:${rColor(s.r)}">${pct(s.r)}</td>
       <td style="font-weight:600">${cVal ? fmtMoney(cVal) : "—"}</td>
       <td>${renderBadge(s.r)}</td>
@@ -742,23 +735,8 @@ function initApp() {
 window.renderDashboardData = function() {
   const sp = state.snaps[0]?.prices || {};
   const cp = state.snaps[state.snaps.length - 1]?.prices || {};
+  const pp = state.snaps.length > 1 ? state.snaps[state.snaps.length - 2]?.prices : null;
   const hasR = state.snaps.length >= 2;
-
-  // --- NEW: DETECT MISSING DATA & RENDER PATCH BUTTON ---
-  const lastSnap = state.snaps[state.snaps.length - 1];
-  const missingStocks = state.inited ? allUniq(state.sA).filter(s => lastSnap.prices[s.t] == null || isNaN(lastSnap.prices[s.t])) : [];
-  
-  const alertContainer = document.getElementById("missing-alert-container");
-  if (missingStocks.length > 0) {
-    alertContainer.innerHTML = `
-      <div class="alert alert-amber" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 24px; flex-wrap:wrap; gap:12px;">
-        <div>⚠️ <b>Missing Data:</b> ${missingStocks.length} stock(s) returned blank (e.g. ${missingStocks.slice(0,3).map(s=>s.t).join(', ')}). This usually happens if the ticker symbol has a typo.</div>
-        <button class="btn-primary" style="background:#d97706; padding:8px 16px;" onclick="patchMissingData()">✏️ Manually Patch Prices</button>
-      </div>`;
-  } else {
-    alertContainer.innerHTML = "";
-  }
-  // --------------------------------------------------------
 
   const streams = {
     A: {stocks: state.sA, label: LABELS.A, color: COLORS.A},
@@ -767,7 +745,11 @@ window.renderDashboardData = function() {
     D: {stocks: [BM], label: LABELS.D, color: COLORS.D}
   };
   const rets = {};
-  for (const [k,v] of Object.entries(streams)) rets[k] = hasR ? calcRet(v.stocks, sp, cp) : null;
+  const dailyRets = {};
+  for (const [k,v] of Object.entries(streams)) {
+    rets[k] = hasR ? calcRet(v.stocks, sp, cp) : null;
+    dailyRets[k] = (hasR && pp) ? calcRet(v.stocks, pp, cp) : null;
+  }
 
   document.getElementById("hdr-sub").innerHTML =
     `Started <b>${fmtDF(state.startDate)}</b> &bull; Day ${daysSince(state.startDate)}/365 &bull; ` +
@@ -780,13 +762,18 @@ window.renderDashboardData = function() {
     const sorted = Object.entries(rets).filter(([k,v]) => v != null && !isNaN(v) && (k !== "A" || state.sA.length > 0)).sort((a,b) => b[1]-a[1]);
     lb.innerHTML = sorted.map(([k,r],i) => {
       const val = INITIAL_INVESTMENT * (1 + r/100);
+      const dRet = dailyRets[k];
       return `
       <div class="lb-card" style="border-left-color: ${streams[k].color}">
         <span class="rank">${RANKS[i]||"#"+(i+1)}</span>
         <div>
           <div class="lbl">${streams[k].label}</div>
           <div class="val ${r>=0?"pos":"neg"}">${fmtMoney(val)}</div>
-          <div style="font-size:12px;color:${r>=0?"var(--success)":"var(--danger)"};margin-top:2px;font-weight:600">${pct(r)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600">
+            <span style="color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)} Total</span>
+            <span style="margin:0 4px;opacity:0.5">•</span>
+            <span style="color:${dRet>=0?"var(--success)":"var(--danger)"}">${pct(dRet)} Today</span>
+          </div>
         </div>
       </div>`;
     }).join("");
@@ -797,7 +784,7 @@ window.renderDashboardData = function() {
   if (hasR) {
     for (const [k,v] of Object.entries(streams)) {
       if (k === "A" && state.sA.length === 0) continue;
-      const r = rets[k], al = r != null && rets.D != null ? r - rets.D : null;
+      const r = rets[k], dRet = dailyRets[k], al = r != null && rets.D != null ? r - rets.D : null;
       const dr = renderDD(state.snaps, v.stocks), vl = renderVol(state.snaps, v.stocks);
       const val = INITIAL_INVESTMENT * (1 + (r||0)/100);
       
@@ -808,10 +795,11 @@ window.renderDashboardData = function() {
             <div class="ml" style="color:${r>=0?'#166534':'#991b1b'}">Current Portfolio Value</div>
             <div class="mv" style="font-size:24px;color:${r>=0?'#15803d':'#b91c1c'}">${fmtMoney(val)}</div>
           </div>
-          <div class="metric-box"><div class="ml">Return</div><div class="mv" style="color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)}</div></div>
+          <div class="metric-box"><div class="ml">Total Return</div><div class="mv" style="color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)}</div></div>
+          <div class="metric-box"><div class="ml">1D Return</div><div class="mv" style="color:${dRet>=0?"var(--success)":"var(--danger)"}">${pct(dRet)}</div></div>
           <div class="metric-box"><div class="ml">vs Nifty</div><div class="mv" style="color:${al>=0?"var(--success)":"var(--danger)"}">${pct(al)}</div></div>
           <div class="metric-box"><div class="ml">Drawdown</div><div class="mv" style="color:${dr<0?"var(--danger)":"var(--text-main)"}">${dr!=null?pct(dr):"—"}</div></div>
-          <div class="metric-box"><div class="ml">Volatility</div><div class="mv" style="color:var(--text-main)">${vl!=null?vl.toFixed(2)+"%":"—"}</div></div>
+          <div class="metric-box" style="grid-column: span 2;"><div class="ml">Volatility</div><div class="mv" style="color:var(--text-main)">${vl!=null?vl.toFixed(2)+"%":"—"}</div></div>
         </div>
       </div>`;
     }
@@ -826,6 +814,7 @@ window.renderDashboardData = function() {
   const renderStreamTab = (k) => {
     const v = streams[k];
     const r = rets[k];
+    const dRet = dailyRets[k];
     const stocks = v.stocks;
     const val = r != null ? INITIAL_INVESTMENT * (1 + r/100) : null;
     return `
@@ -834,10 +823,17 @@ window.renderDashboardData = function() {
           <div style="font-weight:600;font-size:18px">${v.label}</div>
           <div class="text-muted" style="margin-top:4px">${stocks.length} stocks &bull; Equal weight ${fmtMoney(INITIAL_INVESTMENT/stocks.length)} each</div>
         </div>
-        ${hasR && r != null ? `<div style="text-align:right"><div style="font-size:28px;font-weight:700;color:${r>=0?"var(--success)":"var(--danger)"}">${fmtMoney(val)}</div><div style="font-size:14px;font-weight:600;color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)} total return</div></div>` : ""}
+        ${hasR && r != null ? `<div style="text-align:right">
+          <div style="font-size:28px;font-weight:700;color:${r>=0?"var(--success)":"var(--danger)"}">${fmtMoney(val)}</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text-muted);margin-top:4px;">
+            <span style="color:${r>=0?"var(--success)":"var(--danger)"}">${pct(r)} Total</span>
+            <span style="margin:0 4px;opacity:0.5">•</span>
+            <span style="color:${dRet>=0?"var(--success)":"var(--danger)"}">${pct(dRet)} 1D</span>
+          </div>
+        </div>` : ""}
       </div>
       ${hasR && stocks.length > 0 ? `<div class="card"><h2 style="margin-bottom:16px;color:var(--text-muted);font-size:12px;text-transform:uppercase;">Individual Stock Performance</h2>${renderMiniBar(stocks,sp,cp)}</div>` : ""}
-      <div class="card" style="padding:0;overflow:hidden;border:none;">${renderStockTable(stocks,sp,cp)}</div>`;
+      <div class="card" style="padding:0;overflow:hidden;border:none;">${renderStockTable(stocks,sp,cp,pp)}</div>`;
   };
   document.getElementById("tab-streamA").innerHTML = state.sA.length > 0 ? renderStreamTab("A") : "<p class='text-muted'>No Stream A tickers set.</p>";
   document.getElementById("tab-streamB").innerHTML = renderStreamTab("B");
@@ -845,13 +841,13 @@ window.renderDashboardData = function() {
 
   const allOrder = ["B","C","A","D"].filter(k => k !== "A" || state.sA.length > 0);
   document.getElementById("tab-all").innerHTML = allOrder.map(k => {
-    const v = streams[k]; const r = rets[k];
+    const v = streams[k]; const r = rets[k]; const dRet = dailyRets[k];
     const val = r != null ? INITIAL_INVESTMENT * (1 + r/100) : null;
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px;box-shadow:var(--shadow-sm)">
       <div style="padding:16px 20px;background:${v.color};color:#fff;font-weight:600;font-size:16px;display:flex;justify-content:space-between;align-items:center;">
-        <span>${v.label}</span>${hasR&&r!=null?`<span>${fmtMoney(val)} (${pct(r)})</span>`:""}
+        <span>${v.label}</span>${hasR&&r!=null?`<span>${fmtMoney(val)} &bull; Total: ${pct(r)} &bull; 1D: ${pct(dRet)}</span>`:""}
       </div>
-      ${renderStockTable(v.stocks,sp,cp)}
+      ${renderStockTable(v.stocks,sp,cp,pp)}
     </div>`;
   }).join("");
 }
@@ -930,29 +926,6 @@ document.getElementById("btn-auto-refresh").onclick = async function() {
 
 document.getElementById("btn-cancel-auto-refresh").onclick = () => {
   if (fetchAbortController) fetchAbortController.abort();
-};
-
-// --- NEW BUTTON: PATCH MISSING DATA ---
-window.patchMissingData = async function() {
-  const lastSnap = state.snaps[state.snaps.length - 1];
-  const missingStocks = allUniq(state.sA).filter(s => lastSnap.prices[s.t] == null || isNaN(lastSnap.prices[s.t]));
-  
-  let updated = false;
-  for (const s of missingStocks) {
-    const val = prompt(`Enter the current price for ${s.t}\n(Leave blank to skip)`);
-    if (val !== null && val.trim() !== "") {
-      const num = parseFloat(val.replace(/,/g, '').replace(/₹/g, ''));
-      if (!isNaN(num)) {
-        lastSnap.prices[s.t] = num;
-        updated = true;
-      }
-    }
-  }
-  
-  if (updated) {
-    await saveState();
-    renderDashboardData();
-  }
 };
 
 // ── BOOT ──
